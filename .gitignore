@@ -1,0 +1,3 @@
+workspace
+docker-compose/wp_data
+docker-compose/db_data

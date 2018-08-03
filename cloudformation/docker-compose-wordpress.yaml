@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Setting up a wordpress editor instance
+Parameters:
+  Size:
+    Description: Instance Type
+    Type: String
+    Default: Standard.VPN-t2.micro
+    AllowedValues:
+    - Standard.VPN-t2.micro
+    - High.Speed.VPN-t2.medium
+    - Ultra.High.Speed.VPN-m3.xlarge
+
+Mappings:
+  AWSInstanceType2Arch:
+    Standard.VPN-t2.micro:
+      InstanceType: t2.micro
+    High.Speed.VPN-t2.medium:
+      InstanceType: t2.medium
+    Ultra.High.Speed.VPN-m3.xlarge:
+      InstanceType: m3.xlarge
+  AWSRegionArch2AMI:
+    us-east-1:
+      HVM64: ami-759bc50a
+    us-east-2:
+      HVM64: ami-5e8bb23b
+    us-west-1:
+      HVM64: ami-4aa04129
+    us-west-2:
+      HVM64: ami-ba602bc2
+    eu-west-1:
+      HVM64: ami-2a7d75c0
+    eu-west-2:
+      HVM64: ami-6b3fd60c
+    eu-west-3:
+      HVM64: ami-20ee5e5d
+    eu-central-1:
+      HVM64: ami-de8fb135
+    ap-northeast-1:
+      HVM64: ami-940cdceb
+    ap-northeast-2:
+      HVM64: ami-467acf28
+    ap-northeast-3:
+      HVM64: ami-85b3bdf8
+    ap-southeast-1:
+      HVM64: ami-51a7aa2d
+    ap-southeast-2:
+      HVM64: ami-47c21a25
+    sa-east-1:
+      HVM64: ami-8eecc9e2
+    ap-south-1:
+      HVM64: ami-188fba77
+    ca-central-1:
+      HVM64: ami-db9e1cbf
+  AWSInstanceMaxPrice2InstanceType:
+    t2.micro:
+      Price: 0.0116
+    t2.medium:
+      Price: 0.0464
+    m3.xlarge:
+      Price: 0.20
+
+
+Resources:
+  WPServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - AWSRegionArch2AMI
+        - Ref: AWS::Region
+        - HVM64
+      InstanceType:
+        Fn::FindInMap:
+        - AWSInstanceType2Arch
+        - Ref: Size
+        - InstanceType
+      IamInstanceProfile: knotnews-to-s3
+      SecurityGroups:
+      - Ref: VPNSecurityGroup
+      KeyName: wordpress-to-s3
+      Tags:
+      - Key: Name
+        Value:
+          Ref: AWS::StackName
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/sh
+          # Install docker
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+          sudo add-apt-repository \
+            "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+            $(lsb_release -cs) \
+            stable"
+          sudo apt-get update
+          sudo apt-get install -y docker-ce
+          sudo usermod -aG docker ubuntu
+          # Install docker-compose
+          curl -L https://github.com/docker/compose/releases/download/1.21.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          sudo apt-get install -y awscli
+          mkdir /home/ubuntu/knotnews-to-s3
+          cd /home/ubuntu/knotnews-to-s3
+          aws s3 cp s3://knotnews-to-s3/docker-compose/docker-compose.yml .
+          aws s3 cp s3://knotnews-to-s3/docker-compose/php.ini .
+          aws s3 cp s3://knotnews-to-s3/docker-compose/uploads.ini .
+          docker-compose up
+
+  VPNSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Wordpress Security Groups
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 73.61.11.141/32
+      - IpProtocol: tcp
+        FromPort: '8000'
+        ToPort: '8000'
+        CidrIp: 0.0.0.0/0
+Outputs:
+  VPNServerAddress:
+    Description: Use the IP as Server Address or VPN Host
+    Value:
+      Fn::GetAtt:
+        - WPServerInstance
+        - PublicIp
+  WordPressNotes:
+    Description: Allow a few minutes for Wordpress to fully start up
+    Value: Comments
